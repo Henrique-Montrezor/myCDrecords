@@ -1,0 +1,19 @@
+# Requirements para o projeto myCDrecords
+# Versões mínimas recomendadas; ajuste conforme seu ambiente.
+Flask>=2.0,<3.0
+Flask-Login>=0.6
+Flask-SQLAlchemy>=2.5
+SQLAlchemy>=1.4
+requests>=2.28
+python-dotenv>=0.21.0
+certifi>=2023.5.7
+Werkzeug>=2.0
+
+# Dependências opcionais (descomente/instale se usar PostgreSQL ou MySQL em produção)
+# psycopg2-binary>=2.9  # Para PostgreSQL
+# mysqlclient>=2.1     # Para MySQL
+
+# Observações:
+# - 'Flask' já puxa Jinja2, itsdangerous e Werkzeug como dependências.
+# - 'Flask-SQLAlchemy' puxa 'SQLAlchemy', mas incluí 'SQLAlchemy' explicitamente
+#   para controle de versão.

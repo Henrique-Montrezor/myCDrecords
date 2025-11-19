@@ -82,3 +82,155 @@
     
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('album-search-input');
+    const resultsContainer = document.getElementById('search-results-container');
+    let debounceTimer = null;
+
+    function clearResults() {
+        resultsContainer.innerHTML = '';
+    }
+
+    function showMessage(msg, kind='info') {
+        clearResults();
+        const color = kind === 'error' ? 'text-red-400' : 'text-gray-400';
+        const el = document.createElement('div');
+        el.className = `py-4 ${color}`;
+        el.textContent = msg;
+        resultsContainer.appendChild(el);
+    }
+
+    function renderResults(items) {
+        clearResults();
+        if (!items || items.length === 0) {
+            showMessage('Nenhum álbum encontrado para essa busca.');
+            return;
+        }
+
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4';
+
+        items.forEach(it => {
+            const card = document.createElement('div');
+            card.className = 'bg-gray-800 rounded-lg overflow-hidden shadow hover:shadow-lg transition';
+
+            const imgWrap = document.createElement('div');
+            imgWrap.className = 'w-full h-48 bg-gray-700 flex items-center justify-center';
+            if (it.image) {
+                const img = document.createElement('img');
+                img.src = it.image;
+                img.alt = it.name || 'Álbum';
+                img.className = 'object-cover w-full h-48';
+                imgWrap.appendChild(img);
+            } else {
+                imgWrap.innerHTML = `
+                    <div class="w-full h-48 bg-gray-700 flex items-center justify-center text-gray-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 16m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                `;
+            }
+
+            const body = document.createElement('div');
+            body.className = 'p-3';
+
+            const title = document.createElement('h3');
+            title.className = 'text-white font-semibold text-sm mb-1';
+            title.textContent = it.name || '—';
+
+            const artists = document.createElement('p');
+            artists.className = 'text-gray-400 text-xs mb-2 truncate';
+            artists.textContent = it.artists || '';
+
+            const footer = document.createElement('div');
+            footer.className = 'flex items-center justify-between';
+
+            const tracks = document.createElement('span');
+            tracks.className = 'text-gray-500 text-xs';
+            tracks.textContent = (it.total_tracks ? `${it.total_tracks} faixas` : '—');
+
+            const btn = document.createElement('a');
+            btn.className = 'inline-block bg-green-500 text-white text-xs px-3 py-1 rounded hover:bg-green-600';
+            btn.href = `/album/${encodeURIComponent(it.id)}`;
+            btn.textContent = 'Detalhes';
+
+            footer.appendChild(tracks);
+            footer.appendChild(btn);
+
+            body.appendChild(title);
+            body.appendChild(artists);
+            body.appendChild(footer);
+
+            card.appendChild(imgWrap);
+            card.appendChild(body);
+
+            grid.appendChild(card);
+        });
+
+        resultsContainer.appendChild(grid);
+    }
+
+    async function doSearch(q) {
+        q = (q || '').trim();
+        if (!q) {
+            clearResults();
+            return;
+        }
+
+        try {
+            const url = `/api/search_album?q=${encodeURIComponent(q)}`;
+            const resp = await fetch(url, { credentials: 'same-origin' });
+
+            // Se o servidor redirecionar para login, o conteúdo pode ser HTML
+            const ct = resp.headers.get('content-type') || '';
+            if (!resp.ok) {
+                // tenta extrair JSON com mensagem de erro
+                if (ct.includes('application/json')) {
+                    const payload = await resp.json();
+                    showMessage(payload.error || payload.message || 'Erro na busca', 'error');
+                } else {
+                    showMessage('Erro na busca. Verifique se está logado.', 'error');
+                }
+                return;
+            }
+
+            if (ct.includes('application/json')) {
+                const payload = await resp.json();
+                if (Array.isArray(payload)) {
+                    renderResults(payload);
+                } else if (payload.error) {
+                    showMessage(payload.error || payload.message, 'error');
+                } else {
+                    showMessage('Resposta inesperada da API.', 'error');
+                }
+            } else {
+                // HTML response — provavelmente redirect para login
+                showMessage('Resposta HTML recebida. Faça login para usar a busca.', 'error');
+            }
+        } catch (err) {
+            console.error(err);
+            showMessage('Erro ao conectar com a API de busca.', 'error');
+        }
+    }
+
+    input.addEventListener('input', (e) => {
+        const q = e.target.value;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => doSearch(q), 300);
+    });
+
+    // Search on Enter
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (debounceTimer) clearTimeout(debounceTimer);
+            doSearch(input.value);
+        }
+    });
+});
+</script>
+{% endblock %}
