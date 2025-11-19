@@ -1,0 +1,84 @@
+<!-- Este template estende o _base.html (que teria o menu, o <head>, etc.) -->
+{% extends "_base.html" %}
+
+<!-- Define o título da página (que o _base.html usaria) -->
+{% block title %}Bem-vindo(a) ao MeuLetterboxd{% endblock %}
+
+<!-- Todo o conteúdo específico desta página vai aqui dentro -->
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    
+        <!-- 
+            Seção de Busca. 
+            Em um app real, o arquivo /static/js/main.js ouviria por
+            mudanças neste input para chamar a /api/search_album
+        -->
+    <div class="mb-12">
+        <h1 class="text-3xl md:text-4xl font-bold text-white mb-4">Bem-vindo(a) ao seu Diário de Álbuns</h1>
+        <input 
+            type="search" 
+            id="album-search-input"
+            placeholder="Buscar um álbum para adicionar ou criticar..." 
+            class="w-full p-4 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+        >
+        <!-- Os resultados da busca (via JS) apareceriam aqui -->
+        <div id="search-results-container" class="mt-2"></div>
+    </div>
+
+    <!-- 
+      Seção de Atividades Recentes.
+      O 'app.py' envia a variável 'reviews' para este template.
+      Vamos iterar sobre ela.
+    -->
+    <h2 class="text-2xl font-semibold text-white mb-4">Atividades Recentes</h2>
+    
+    <div class="space-y-6">
+        <!-- Verifica se a lista de reviews não está vazia -->
+        {% if reviews %}
+            <!-- Começa o loop do Jinja2 -->
+            {% for review in reviews %}
+                <div class="bg-gray-800 rounded-lg shadow-lg p-4 flex items-start space-x-4">
+                    
+                    <!-- Placeholder do Pôster -->
+                    <div class="w-20 h-28 bg-gray-700 rounded flex-shrink-0 flex items-center justify-center text-gray-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 16m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    
+                    <div class="flex-grow">
+                        <!-- Título do Álbum (linkável) -->
+                        <h3 class="text-xl font-bold text-white">
+                            <a href="{{ url_for('album_details', album_id=review.album_id) }}" class="hover:text-blue-400">
+                                {{ review.album_title }}
+                            </a>
+                        </h3>
+                        
+                        <!-- Info da Review: Autor (linkável) e Nota -->
+                        <p class="text-sm text-gray-400 mb-2">
+                            Crítica de 
+                            <a href="{{ url_for('profile', username=review.author.username) }}" class="font-medium hover:text-white">{{ review.author.username }}</a>
+                            - <span class="text-lg font-bold text-yellow-400">Nota: {{ review.rating }}/5</span>
+                        </p>
+                        
+                        <!-- Texto da Review (se existir) -->
+                        {% if review.text %}
+                            <p class="text-gray-300 italic bg-gray-700 p-3 rounded-md">"{{ review.text | truncate(250) }}"</p>
+                        {% else %}
+                            <!-- Mensagem se for só uma nota sem texto -->
+                            <p class="text-gray-500 italic">(O usuário deu uma nota, mas não escreveu uma crítica)</p>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        <!-- Caso a lista 'reviews' esteja vazia -->
+        {% else %}
+            <div class="text-center text-gray-500 py-10">
+                <p class_="text-lg">Nenhuma atividade recente ainda.</p>
+                <p>Use a barra de busca acima para encontrar um álbum e ser o primeiro a adicionar uma crítica!</p>
+            </div>
+        {% endif %}
+    </div>
+    
+</div>
+{% endblock %}

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-br" class="dark"> <!-- Define o modo escuro como padrão -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- O título será preenchido pelo 'block title' de cada página -->
+    <title>{% block title %}myCDrecords{% endblock %}</title>
+    
+    <!-- Google Fonts: Pacifico (para o logo) e Poppins (para o corpo) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Carrega o Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configuração do Tailwind para adicionar as novas fontes e modo escuro -->
+    <script>
+        tailwind.config = {
+          darkMode: 'class',
+          theme: {
+            extend: {
+              fontFamily: {
+                poppins: ['Poppins', 'sans-serif'],
+                pacifico: ['Pacifico', 'cursive'],
+              },
+            },
+          },
+        }
+    </script>
+
+    <style>
+        /* Define a fonte Poppins como padrão */
+        html {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+        }
+        /* Melhora a barra de rolagem horizontal no Firefox */
+        .scrollbar-thin {
+            scrollbar-width: thin;
+            scrollbar-color: #4a5568 #2d3748;
+        }
+        /* Webkit (Chrome, Safari, Edge) */
+        .scrollbar-thin::-webkit-scrollbar {
+            height: 8px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #2d3748;
+            border-radius: 4px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 antialiased font-poppins">
+    
+    <!-- Barra de Navegação -->
+    <header class="bg-gray-800 shadow-lg sticky top-0 z-50">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo e Navegação Principal -->
+                <div class="flex items-center space-x-8">
+                    <!-- Logo com fonte "Pacifico" e link para a home -->
+                    <a href="{{ url_for('index') }}" class="text-3xl font-pacifico text-green-400">myCDrecords</a>
+                    
+                    <div class="hidden md:flex items-baseline space-x-6">
+                        <!-- Links de navegação principais (você pode precisar criar estas rotas) -->
+                        <a href="{{ url_for('index') }}" class="px-3 py-2 rounded-md text-sm font-medium text-white bg-gray-700 transition-colors duration-300">Início</a>
+                        <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-300">Álbuns</a>
+                        <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-300">Listas</a>
+                        <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-300">Diário</a>
+                    </div>
+                </div>
+
+                <!-- Busca e Lógica de Autenticação -->
+                <div class="flex items-center space-x-4">
+                    <div class="hidden sm:block">
+                        <input type="text" placeholder="Buscar..." class="bg-gray-700 text-gray-200 px-4 py-2 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-400 transition-all" />
+                    </div>
+                    
+                    <!-- Lógica de autenticação do Flask-Login -->
+                    <div class="hidden md:flex items-center space-x-2">
+                        {% if current_user.is_authenticated %}
+                            <!-- Links para usuário LOGADO -->
+                            <a href="{{ url_for('profile', username=current_user.username) }}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-300">Meu Perfil</a>
+                            <a href="{{ url_for('logout') }}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-300">Logout</a>
+                        {% else %}
+                            <!-- Links para usuário DESLOGADO (com estilo do myCDrecords) -->
+                            <a href="{{ url_for('login') }}" class="px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-300">Entrar</a>
+                            <a href="{{ url_for('register') }}" class="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-500 hover:bg-green-600 transition-colors duration-300">
+                                Criar Conta
+                            </a>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Ícone de Menu Móvel (visível em telas pequenas) -->
+                    <div class="md:hidden">
+                        <button id="mobile-menu-button" class="text-gray-300 hover:text-white p-2 rounded-md transition-colors duration-300">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-8 6h8"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Navegação Móvel (oculta por padrão) -->
+            <div class="md:hidden hidden" id="mobile-menu">
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('profile', username=current_user.username) }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Meu Perfil</a>
+                    <a href="{{ url_for('logout') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Logout</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Entrar</a>
+                    <a href="{{ url_for('register') }}" class="block px-3 py-2 rounded-md text-base font-medium text-white bg-green-500 hover:bg-green-600">Criar Conta</a>
+                {% endif %}
+                <!-- Links principais móveis -->
+                <hr class="border-gray-700 my-2">
+                <a href="{{ url_for('index') }}" class="block px-3 py-2 rounded-md text-base font-medium text-white bg-gray-700">Início</a>
+                <a href="#" class="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Álbuns</a>
+                <a href="#" class="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Listas</a>
+                <a href="#" class="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Diário</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Seção de Alertas "Flash" -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container mx-auto px-4 mt-4 space-y-2">
+                {% for category, message in messages %}
+                    <!-- 
+                      CORREÇÃO: Tailwind não pode construir classes dinamicamente.
+                      Definimos a classe inteira com base na categoria.
+                    -->
+                    {% set color_class = 'bg-blue-600' %} <!-- Padrão -->
+                    {% if category == 'danger' %}
+                        {% set color_class = 'bg-red-600' %}
+                    {% elif category == 'success' %}
+                        {% set color_class = 'bg-green-600' %}
+                    {% elif category == 'info' %}
+                        {% set color_class = 'bg-gray-600' %}
+                    {% endif %}
+                    
+                    <div class="p-4 rounded-lg {{ color_class }} text-white font-medium">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Conteúdo Principal -->
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 
+          O conteúdo de 'index.html' (ou qualquer outro template 
+          que estenda este) será injetado aqui.
+        -->
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Rodapé -->
+    <footer class="bg-gray-800 border-t border-gray-700 mt-12">
+        <div class="container mx-auto px-6 py-8">
+            <div class="flex flex-col items-center text-center">
+                <a href="{{ url_for('index') }}" class="text-3xl font-pacifico text-green-400 mb-2">AlbumLog</a>
+                <div class="flex flex-wrap justify-center space-x-6 text-gray-400 mb-4">
+                    <a href="#" class="hover:text-white transition-colors duration-300">Sobre</a>
+                    <a href="#" class="hover:text-white transition-colors duration-300">Carreiras</a>
+                    <a href="#" class="hover:text-white transition-colors duration-300">Termos</a>
+                    <a href="#" class="hover:text-white transition-colors duration-300">Privacidade</a>
+                    <a href="#" class="hover:text-white transition-colors duration-300">Ajuda</a>
+                </div>
+                <p class="text-gray-500 text-sm">&copy; 2025 AlbumLog. Feito para fãs de música.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Script para menu mobile -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', () => {
+                    mobileMenu.classList.toggle('hidden');
+                });
+            }
+        });
+    </script>
+
+    <!-- Bloco para scripts específicos da página -->
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>

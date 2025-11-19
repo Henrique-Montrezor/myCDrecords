@@ -1,0 +1,28 @@
+{% extends "_base.html" %}
+
+{% block title %}{{ album.album_title if album and album.album_title else 'Detalhes do Álbum' }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-gray-800 rounded-lg p-6">
+            <h1 class="text-3xl font-bold text-white mb-2">{{ album.name if album and album.name else (album.album_title if album and album.album_title else 'Título do Álbum') }}</h1>
+            <p class="text-gray-400 mb-4">Artista: {{ album.artists[0].name if album and album.artists else (album.artist if album and album.artist else 'Desconhecido') }}</p>
+
+        <h2 class="text-2xl font-semibold text-white mb-4">Críticas</h2>
+        <div class="space-y-4">
+            {% if reviews %}
+                {% for review in reviews %}
+                    <div class="bg-gray-700 p-4 rounded">
+                        <p class="text-sm text-gray-300">Por <a href="{{ url_for('profile', username=review.author.username) }}" class="font-medium hover:text-white">{{ review.author.username }}</a> — <span class="font-bold text-yellow-400">{{ review.rating }}/5</span></p>
+                        {% if review.text %}
+                            <p class="mt-2 text-gray-200">"{{ review.text }}"</p>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-gray-400">Ainda não há críticas para este álbum. Seja o primeiro!</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
