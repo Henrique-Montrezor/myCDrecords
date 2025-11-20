@@ -48,6 +48,24 @@ def get_album(album_id):
     resp.raise_for_status()
     return resp.json()
 
+
+def get_new_releases(limit=10, country=None):
+    """Return list of new release albums from Spotify Browse endpoint.
+    Returns the list of album items (same structure as search_albums items).
+    """
+    token = get_spotify_token()
+    params = {'limit': limit}
+    if country:
+        params['country'] = country
+    resp = requests.get('https://api.spotify.com/v1/browse/new-releases',
+                        headers={'Authorization': f'Bearer {token}'},
+                        params=params,
+                        verify=CA_BUNDLE)
+    resp.raise_for_status()
+    data = resp.json()
+    # structure: {'albums': {'href':..., 'items': [...]}}
+    return data.get('albums', {}).get('items', [])
+
 def get_recommendations(seed_artists=None, seed_tracks=None, limit=10):
     token = get_spotify_token()
     params = {'limit': limit}

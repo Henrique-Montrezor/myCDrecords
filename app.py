@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import text
-from spotify_client import search_albums, get_album
+from spotify_client import search_albums, get_album, get_new_releases, get_recommendations
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 
@@ -78,7 +78,90 @@ def index():
     """ Página Inicial """
     # Busca as últimas reviews de todos os usuários
     recent_reviews = Review.query.order_by(Review.id.desc()).limit(10).all()
-    return render_template('index.html', reviews=recent_reviews)
+    # Tenta buscar lançamentos novos via Spotify (não quebra se falhar)
+    albums = []
+    most_listened = []
+    try:
+        albums = get_new_releases(limit=8)
+    except Exception as e:
+        app.logger.debug(f"Não foi possível obter 'new releases' do Spotify: {e}")
+
+    # Fallback rápido para desenvolvimento: se não houver lançamentos, usa amostras locais
+    if not albums:
+        albums = [
+            {
+                'id': 'sample1',
+                'name': 'Sample Album One',
+                'artists': [{'name': 'Sample Artist'}],
+                'images': [{'url': 'https://placehold.co/400x400/1A202C/Green?text=Sample+1'}]
+            },
+            {
+                'id': 'sample2',
+                'name': 'Sample Album Two',
+                'artists': [{'name': 'Sample Artist'}],
+                'images': [{'url': 'https://placehold.co/400x400/1A202C/Green?text=Sample+2'}]
+            },
+            {
+                'id': 'sample3',
+                'name': 'Sample Album Three',
+                'artists': [{'name': 'Sample Artist'}],
+                'images': [{'url': 'https://placehold.co/400x400/1A202C/Green?text=Sample+3'}]
+            }
+        ]
+
+    # Normaliza estrutura dos álbuns para um formato simples usado no template
+    def _normalize_album(a):
+        return {
+            'id': a.get('id'),
+            'name': a.get('name') or a.get('album_title') or '—',
+            'artists': [{'name': ar.get('name') if isinstance(ar, dict) else str(ar)} for ar in a.get('artists', [])] if a.get('artists') else [],
+            'images': a.get('images') or []
+        }
+
+    try:
+        albums = [_normalize_album(a) for a in albums]
+    except Exception as e:
+        app.logger.debug(f"Erro ao normalizar albums: {e}")
+
+    # Monta lista de 'Mais Ouvidos' a partir de recomendações usando artistas extraídos dos lançamentos
+    # Apenas tenta recomendações se tivermos artistas seeds válidos
+    try:
+        seed_artists = []
+        for a in albums:
+            if a.get('artists'):
+                # Alguns dados (fallbacks) podem não ter 'id' — só adiciona se existir
+                aid = a['artists'][0].get('id')
+                if aid and aid not in seed_artists:
+                    seed_artists.append(aid)
+            if len(seed_artists) >= 5:
+                break
+
+        if seed_artists:
+            try:
+                rec_tracks = get_recommendations(seed_artists=seed_artists, limit=8)
+            except Exception as e:
+                # Log mais informativo e continua com most_listened vazio
+                app.logger.debug(f"Não foi possível obter recomendações do Spotify (status/erro): {e}")
+                rec_tracks = []
+
+            # transforma tracks em estrutura conveniente para o template
+            for t in rec_tracks:
+                img = None
+                if t.get('album') and t['album'].get('images'):
+                    img = t['album']['images'][0].get('url')
+                artists = ', '.join([ar.get('name') for ar in t.get('artists', [])])
+                most_listened.append({
+                    'id': t.get('id'),
+                    'name': t.get('name'),
+                    'artists': artists,
+                    'image': img,
+                    'preview_url': t.get('preview_url'),
+                    'album_id': t.get('album', {}).get('id')
+                })
+    except Exception as e:
+        app.logger.debug(f"Erro ao montar seeds para recomendações: {e}")
+
+    return render_template('index.html', reviews=recent_reviews, albums=albums, most_listened=most_listened)
 
 @app.route('/perfil/<username>')
 @login_required
@@ -235,6 +318,36 @@ def debug_env():
         'DOTENV_path': DOTENV_PATH or '',
         'cwd': os.getcwd()
     })
+
+
+@app.route('/_debug/font')
+def debug_font():
+    """Rota de debug que verifica se o arquivo de fonte Grinched existe em static/fonts
+    e retorna a URL pública para testar no navegador.
+    """
+    font_path = os.path.join(app.root_path, 'static', 'fonts', 'Grinched-Regular.ttf')
+    exists = os.path.exists(font_path)
+    font_url = None
+    if exists:
+        try:
+            font_url = url_for('static', filename='fonts/Grinched-Regular.ttf', _external=True)
+        except Exception:
+            font_url = url_for('static', filename='fonts/Grinched-Regular.ttf')
+
+    return jsonify({'font_exists': exists, 'font_path': font_path, 'font_url': font_url})
+
+
+@app.route('/_debug/new_releases')
+def debug_new_releases():
+    """Rota de debug para retornar os novos lançamentos do Spotify (JSON).
+    Útil para verificar se a API está retornando álbuns e qual é a estrutura.
+    """
+    try:
+        albums = get_new_releases(limit=12)
+        return jsonify({'ok': True, 'count': len(albums), 'items': albums})
+    except Exception as e:
+        app.logger.exception('Erro ao obter new releases')
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 @app.route('/api/review/add', methods=['POST'])
 @login_required

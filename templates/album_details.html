@@ -5,23 +5,99 @@
 {% block content %}
 <div class="container mx-auto px-4 py-8">
     <div class="bg-gray-800 rounded-lg p-6">
-            <h1 class="text-3xl font-bold text-white mb-2">{{ album.name if album and album.name else (album.album_title if album and album.album_title else 'Título do Álbum') }}</h1>
-            <p class="text-gray-400 mb-4">Artista: {{ album.artists[0].name if album and album.artists else (album.artist if album and album.artist else 'Desconhecido') }}</p>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Imagens e Ações -->
+            <div class="col-span-1">
+                <div class="bg-gray-900 rounded-lg overflow-hidden p-4">
+                    {% if album and album.images and album.images|length > 0 %}
+                        <img src="{{ album.images[0].url }}" alt="{{ album.name }}" class="w-full h-auto rounded mb-4 object-cover">
+                        <div class="flex gap-2">
+                            {% for img in album.images %}
+                                <img src="{{ img.url }}" alt="thumb-{{ loop.index }}" class="w-16 h-16 object-cover rounded-md border border-gray-700">
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="w-full h-64 bg-gray-700 flex items-center justify-center text-gray-400">Sem imagem disponível</div>
+                    {% endif %}
 
-        <h2 class="text-2xl font-semibold text-white mb-4">Críticas</h2>
-        <div class="space-y-4">
-            {% if reviews %}
-                {% for review in reviews %}
-                    <div class="bg-gray-700 p-4 rounded">
-                        <p class="text-sm text-gray-300">Por <a href="{{ url_for('profile', username=review.author.username) }}" class="font-medium hover:text-white">{{ review.author.username }}</a> — <span class="font-bold text-yellow-400">{{ review.rating }}/5</span></p>
-                        {% if review.text %}
-                            <p class="mt-2 text-gray-200">"{{ review.text }}"</p>
+                    <div class="mt-4 space-y-2">
+                        {% if album and album.external_urls and album.external_urls.spotify %}
+                            <a href="{{ album.external_urls.spotify }}" target="_blank" class="inline-block w-full text-center bg-green-500 hover:bg-green-600 text-white py-2 rounded">Abrir no Spotify</a>
                         {% endif %}
+                        <div class="text-sm text-gray-400">
+                            {% if album and album.label %}
+                                <div>Gravadora: <span class="text-gray-200">{{ album.label }}</span></div>
+                            {% endif %}
+                            {% if album and album.release_date %}
+                                <div>Lançamento: <span class="text-gray-200">{{ album.release_date }}</span></div>
+                            {% endif %}
+                            {% if album and album.total_tracks is not none %}
+                                <div faixas>Total de faixas: <span class="text-gray-200">{{ album.total_tracks }}</span></div>
+                            {% endif %}
+                        </div>
                     </div>
-                {% endfor %}
-            {% else %}
-                <p class="text-gray-400">Ainda não há críticas para este álbum. Seja o primeiro!</p>
-            {% endif %}
+                </div>
+            </div>
+
+            <!-- Informação principal -->
+            <div class="col-span-2">
+                <h1 class="text-3xl font-bold text-white mb-2">{{ album.name if album and album.name else (album.album_title if album and album.album_title else 'Título do Álbum') }}</h1>
+                <p class="text-gray-400 mb-4">
+                    Artista: 
+                    {% if album and album.artists %}
+                        {% for artist in album.artists %}
+                            <span class="text-white font-medium">{{ artist.name }}</span>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        {{ album.artist if album and album.artist else 'Desconhecido' }}
+                    {% endif %}
+                </p>
+
+                <!-- Faixas -->
+                <h2 class="text-2xl font-semibold text-white mb-4">Faixas</h2>
+                <div class="bg-gray-900 rounded-lg p-4">
+                    {% if album and album.tracks and album.tracks['items'] %}
+                        <ol class="space-y-3">
+                            {% for track in album.tracks['items'] %}
+                                <li class="flex items-center justify-between p-2 rounded hover:bg-gray-800 transition-colors">
+                                    <div class="flex items-center gap-3 min-w-0">
+                                        <div class="text-gray-400 w-8 text-center">{{ track.track_number }}</div>
+                                        <div class="min-w-0">
+                                            <div class="text-white truncate">{{ track.name }}</div>
+                                            <div class="text-xs text-gray-500 truncate">{% for a in track.artists %}{{ a.name }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-3">
+                                        {% if track.preview_url %}
+                                            <audio controls src="{{ track.preview_url }}" class="w-40"></audio>
+                                        {% endif %}
+                                        <div class="text-sm text-gray-400">{{ ((track.duration_ms // 60000) | string) }}:{{ '%02d' % ((track.duration_ms // 1000) % 60) }}</div>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ol>
+                    {% else %}
+                        <p class="text-gray-400">Não há faixas disponíveis para exibir.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Críticas -->
+                <h2 class="text-2xl font-semibold text-white mt-6 mb-4">Críticas</h2>
+                <div class="space-y-4">
+                    {% if reviews %}
+                        {% for review in reviews %}
+                            <div class="bg-gray-700 p-4 rounded">
+                                <p class="text-sm text-gray-300">Por <a href="{{ url_for('profile', username=review.author.username) }}" class="font-medium hover:text-white">{{ review.author.username }}</a> — <span class="font-bold text-yellow-400">{{ review.rating }}/5</span></p>
+                                {% if review.text %}
+                                    <p class="mt-2 text-gray-200">"{{ review.text }}"</p>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-gray-400">Ainda não há críticas para este álbum. Seja o primeiro!</p>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 </div>

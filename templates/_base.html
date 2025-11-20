@@ -35,6 +35,18 @@
         html {
             font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
         }
+        /* Local custom font: Grinched (use as logo) */
+        @font-face {
+            font-family: 'Grinched';
+            src: url("{{ url_for('static', filename='fonts/Grinched-Regular.ttf') }}") format('truetype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        .font-grinched {
+            font-family: 'Grinched', 'Pacifico', cursive;
+        }
         /* Melhora a barra de rolagem horizontal no Firefox */
         .scrollbar-thin {
             scrollbar-width: thin;
@@ -62,8 +74,8 @@
             <div class="flex justify-between items-center h-16">
                 <!-- Logo e Navegação Principal -->
                 <div class="flex items-center space-x-8">
-                    <!-- Logo com fonte "Pacifico" e link para a home -->
-                    <a href="{{ url_for('index') }}" class="text-3xl font-pacifico text-green-400">myCDrecords</a>
+                    <!-- Logo com fonte "Grinched" (coloque o TTF em static/fonts/Grinched-Regular.ttf) -->
+                    <a href="{{ url_for('index') }}" class="text-3xl font-grinched text-green-400">myCDrecords</a>
                     
                     <div class="hidden md:flex items-baseline space-x-6">
                         <!-- Links de navegação principais (você pode precisar criar estas rotas) -->
@@ -162,7 +174,7 @@
     <footer class="bg-gray-800 border-t border-gray-700 mt-12">
         <div class="container mx-auto px-6 py-8">
             <div class="flex flex-col items-center text-center">
-                <a href="{{ url_for('index') }}" class="text-3xl font-pacifico text-green-400 mb-2">myCDrecords</a>
+                <a href="{{ url_for('index') }}" class="text-3xl font-grinched text-green-400 mb-2">myCDrecords</a>
                 <div class="flex flex-wrap justify-center space-x-6 text-gray-400 mb-4">
                     <a href="#" class="hover:text-white transition-colors duration-300">Sobre</a>
                     <a href="#" class="hover:text-white transition-colors duration-300">Carreiras</a>
