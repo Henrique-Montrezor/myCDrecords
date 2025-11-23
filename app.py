@@ -1,11 +1,16 @@
 import os
+import time
 import requests  # Para chamadas à API externa de álbuns
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+import secrets
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import text
-from spotify_client import search_albums, get_album, get_new_releases, get_recommendations
+from spotify_client import (
+    search_albums, get_album, get_new_releases, get_recommendations, get_artist_top_tracks,
+    build_authorize_url, exchange_code_for_token, refresh_user_token, get_user_profile, get_user_top_artists, get_recommendations_user
+)
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 
@@ -49,7 +54,12 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128))
-    
+    # Spotify integration fields
+    spotify_id = db.Column(db.String(128), unique=False, nullable=True)
+    spotify_access_token = db.Column(db.String(512), nullable=True)
+    spotify_refresh_token = db.Column(db.String(512), nullable=True)
+    spotify_token_expires = db.Column(db.Integer, nullable=True)
+
     reviews = db.relationship('Review', backref='author', lazy=True)
 
     def set_password(self, password):
@@ -123,45 +133,106 @@ def index():
     except Exception as e:
         app.logger.debug(f"Erro ao normalizar albums: {e}")
 
-    # Monta lista de 'Mais Ouvidos' a partir de recomendações usando artistas extraídos dos lançamentos
-    # Apenas tenta recomendações se tivermos artistas seeds válidos
+    # Monta lista de 'Mais Ouvidos' — prioriza recomendações personalizadas do usuário conectado ao Spotify
     try:
+        rec_tracks = []
         seed_artists = []
-        for a in albums:
-            if a.get('artists'):
-                # Alguns dados (fallbacks) podem não ter 'id' — só adiciona se existir
-                aid = a['artists'][0].get('id')
-                if aid and aid not in seed_artists:
-                    seed_artists.append(aid)
-            if len(seed_artists) >= 5:
-                break
+        user_used_spotify = False
 
-        if seed_artists:
+        if current_user.is_authenticated and getattr(current_user, 'spotify_access_token', None):
+            access = current_user.spotify_access_token
             try:
-                rec_tracks = get_recommendations(seed_artists=seed_artists, limit=8)
-            except Exception as e:
-                # Log mais informativo e continua com most_listened vazio
-                app.logger.debug(f"Não foi possível obter recomendações do Spotify (status/erro): {e}")
-                rec_tracks = []
+                # refresh token se expirado
+                if getattr(current_user, 'spotify_token_expires', None) and int(current_user.spotify_token_expires) < int(time.time()):
+                    if getattr(current_user, 'spotify_refresh_token', None):
+                        newtok = refresh_user_token(current_user.spotify_refresh_token)
+                        access = newtok.get('access_token', access)
+                        if newtok.get('refresh_token'):
+                            current_user.spotify_refresh_token = newtok.get('refresh_token')
+                        if newtok.get('expires_in'):
+                            current_user.spotify_token_expires = int(time.time()) + int(newtok.get('expires_in'))
+                        current_user.spotify_access_token = access
+                        db.session.commit()
 
-            # transforma tracks em estrutura conveniente para o template
-            for t in rec_tracks:
-                img = None
-                if t.get('album') and t['album'].get('images'):
-                    img = t['album']['images'][0].get('url')
-                artists = ', '.join([ar.get('name') for ar in t.get('artists', [])])
-                most_listened.append({
-                    'id': t.get('id'),
-                    'name': t.get('name'),
-                    'artists': artists,
-                    'image': img,
-                    'preview_url': t.get('preview_url'),
-                    'album_id': t.get('album', {}).get('id')
-                })
+                # usa os top-artists do usuário como seeds
+                try:
+                    top_artists = get_user_top_artists(access, limit=5)
+                    seed_artists = [a.get('id') for a in top_artists if a.get('id')][:5]
+                    if seed_artists:
+                        user_used_spotify = True
+                        rec_tracks = get_recommendations_user(access, seed_artists=seed_artists, limit=8)
+                except Exception as e:
+                    app.logger.debug(f"User-scoped Spotify recommendations failed: {e}")
+            except Exception as e:
+                app.logger.debug(f"Spotify token refresh/check failed: {e}")
+
+        # Se não tiver recomendações de usuário, monta seeds a partir dos lançamentos e usa client-credentials
+        if not user_used_spotify:
+            for a in albums:
+                if a.get('artists'):
+                    aid = a['artists'][0].get('id')
+                    if aid and aid not in seed_artists:
+                        seed_artists.append(aid)
+                if len(seed_artists) >= 5:
+                    break
+
+            if seed_artists:
+                try:
+                    rec_tracks = get_recommendations(seed_artists=seed_artists, limit=8)
+                except Exception as e:
+                    app.logger.debug(f"Não foi possível obter recomendações do Spotify (status/erro): {e}")
+                    rec_tracks = []
+
+        # transforma tracks em estrutura conveniente para o template
+        for t in rec_tracks:
+            img = None
+            if t.get('album') and t['album'].get('images'):
+                img = t['album']['images'][0].get('url')
+            artists = ', '.join([ar.get('name') for ar in t.get('artists', [])])
+            most_listened.append({
+                'id': t.get('id'),
+                'name': t.get('name'),
+                'artists': artists,
+                'image': img,
+                'preview_url': t.get('preview_url'),
+                'album_id': t.get('album', {}).get('id')
+            })
+
+        # fallback para top-tracks de artistas seed caso não tenha itens
+        if not most_listened and seed_artists:
+            for aid in seed_artists[:3]:
+                try:
+                    top_tracks = get_artist_top_tracks(aid, country='US')
+                except Exception as e:
+                    app.logger.debug(f"Erro ao obter top-tracks do artista {aid}: {e}")
+                    continue
+                for t in top_tracks:
+                    if len(most_listened) >= 8:
+                        break
+                    img = None
+                    if t.get('album') and t['album'].get('images'):
+                        img = t['album']['images'][0].get('url')
+                    artists = ', '.join([ar.get('name') for ar in t.get('artists', [])])
+                    if not any(x['name'] == t.get('name') for x in most_listened):
+                        most_listened.append({
+                            'id': t.get('id'),
+                            'name': t.get('name'),
+                            'artists': artists,
+                            'image': img,
+                            'preview_url': t.get('preview_url'),
+                            'album_id': t.get('album', {}).get('id')
+                        })
+                if len(most_listened) >= 8:
+                    break
     except Exception as e:
         app.logger.debug(f"Erro ao montar seeds para recomendações: {e}")
 
-    return render_template('index.html', reviews=recent_reviews, albums=albums, most_listened=most_listened)
+    # Do not show sample fallback in the 'Mais Ouvidos' carousel.
+    # The carousel should show only user-based recommendations. If none are available,
+    # the frontend will show a CTA to connect Spotify (or prompt to login).
+    most_listened_user = bool(most_listened and current_user.is_authenticated and getattr(current_user, 'spotify_access_token', None))
+
+    return render_template('index.html', reviews=recent_reviews, albums=albums, most_listened=most_listened, most_listened_user=most_listened_user)
 
 @app.route('/perfil/<username>')
 @login_required
@@ -170,6 +241,70 @@ def profile(username):
     user = User.query.filter_by(username=username).first_or_404()
     user_reviews = Review.query.filter_by(user_id=user.id).order_by(Review.id.desc()).all()
     return render_template('profile.html', user=user, reviews=user_reviews)
+
+
+@app.route('/spotify/connect')
+@login_required
+def spotify_connect():
+    redirect_uri = url_for('spotify_callback', _external=True)
+    state = secrets.token_urlsafe(16)
+    session['spotify_oauth_state'] = state
+    try:
+        auth_url = build_authorize_url(redirect_uri, state=state)
+    except Exception as e:
+        flash('Não é possível iniciar conexão com Spotify: verifique configuração.', 'danger')
+        return redirect(url_for('profile', username=current_user.username))
+    return redirect(auth_url)
+
+
+@app.route('/spotify/callback')
+def spotify_callback():
+    error = request.args.get('error')
+    code = request.args.get('code')
+    state = request.args.get('state')
+    saved = session.pop('spotify_oauth_state', None)
+    if error:
+        flash(f'Spotify: {error}', 'danger')
+        return redirect(url_for('index'))
+    if not code or not state or state != saved:
+        flash('Falha na verificação de segurança do Spotify (state mismatch).', 'danger')
+        return redirect(url_for('index'))
+    if not current_user.is_authenticated:
+        flash('Faça login primeiro para conectar sua conta Spotify.', 'warning')
+        return redirect(url_for('login'))
+
+    redirect_uri = url_for('spotify_callback', _external=True)
+    try:
+        token_data = exchange_code_for_token(code, redirect_uri)
+        access = token_data.get('access_token')
+        refresh = token_data.get('refresh_token')
+        expires_in = token_data.get('expires_in')
+        profile = get_user_profile(access)
+        # store on user
+        current_user.spotify_id = profile.get('id')
+        current_user.spotify_access_token = access
+        current_user.spotify_refresh_token = refresh
+        if expires_in:
+            current_user.spotify_token_expires = int(time.time()) + int(expires_in)
+        db.session.commit()
+        flash('Conta Spotify conectada com sucesso!', 'success')
+    except Exception as e:
+        app.logger.exception('Erro ao completar OAuth Spotify')
+        flash('Erro ao conectar com o Spotify.', 'danger')
+
+    return redirect(url_for('profile', username=current_user.username))
+
+
+@app.route('/spotify/disconnect')
+@login_required
+def spotify_disconnect():
+    current_user.spotify_id = None
+    current_user.spotify_access_token = None
+    current_user.spotify_refresh_token = None
+    current_user.spotify_token_expires = None
+    db.session.commit()
+    flash('Conta Spotify desconectada.', 'info')
+    return redirect(url_for('profile', username=current_user.username))
 
 @app.route('/album/<album_id>')
 def album_details(album_id):
@@ -349,6 +484,77 @@ def debug_new_releases():
         app.logger.exception('Erro ao obter new releases')
         return jsonify({'ok': False, 'error': str(e)}), 500
 
+
+@app.route('/_debug/most_listened')
+def debug_most_listened():
+    """Recalcula a lista 'most_listened' usada no index e retorna o JSON para debug."""
+    try:
+        albums = get_new_releases(limit=8)
+    except Exception as e:
+        app.logger.debug(f"Não foi possível obter 'new releases' do Spotify (debug route): {e}")
+        albums = []
+
+    # fallback samples
+    if not albums:
+        albums = [
+            {
+                'id': 'sample1',
+                'name': 'Sample Album One',
+                'artists': [{'name': 'Sample Artist'}],
+                'images': [{'url': 'https://placehold.co/400x400/1A202C/Green?text=Sample+1'}]
+            }
+        ]
+
+    # gather seed artists
+    seed_artists = []
+    for a in albums:
+        if a.get('artists'):
+            aid = a['artists'][0].get('id')
+            if aid and aid not in seed_artists:
+                seed_artists.append(aid)
+        if len(seed_artists) >= 5:
+            break
+
+    most_listened = []
+    if seed_artists:
+        try:
+            rec_tracks = get_recommendations(seed_artists=seed_artists, limit=8)
+        except Exception as e:
+            app.logger.debug(f"Debug: recomendações falharam: {e}")
+            rec_tracks = []
+
+        for t in rec_tracks:
+            img = None
+            if t.get('album') and t['album'].get('images'):
+                img = t['album']['images'][0].get('url')
+            artists = ', '.join([ar.get('name') for ar in t.get('artists', [])])
+            most_listened.append({
+                'id': t.get('id'), 'name': t.get('name'), 'artists': artists,
+                'image': img, 'preview_url': t.get('preview_url'), 'album_id': t.get('album', {}).get('id')
+            })
+
+        # fallback to artist top tracks
+        if not most_listened:
+            for aid in seed_artists[:3]:
+                try:
+                    top_tracks = get_artist_top_tracks(aid, country='US')
+                except Exception as e:
+                    app.logger.debug(f"Debug: top-tracks falharam para {aid}: {e}")
+                    continue
+                for t in top_tracks:
+                    if len(most_listened) >= 8:
+                        break
+                    img = None
+                    if t.get('album') and t['album'].get('images'):
+                        img = t['album']['images'][0].get('url')
+                    artists = ', '.join([ar.get('name') for ar in t.get('artists', [])])
+                    if not any(x['name'] == t.get('name') for x in most_listened):
+                        most_listened.append({'id': t.get('id'), 'name': t.get('name'), 'artists': artists, 'image': img, 'preview_url': t.get('preview_url'), 'album_id': t.get('album', {}).get('id')})
+                if len(most_listened) >= 8:
+                    break
+
+    return jsonify({'seed_artists': seed_artists, 'most_listened_count': len(most_listened), 'most_listened': most_listened})
+
 @app.route('/api/review/add', methods=['POST'])
 @login_required
 def api_add_review():
@@ -412,6 +618,25 @@ if __name__ == '__main__':
                 db.session.execute(text("ALTER TABLE review ADD COLUMN album_title VARCHAR;"))
                 if 'movie_title' in cols:
                     db.session.execute(text("UPDATE review SET album_title = movie_title;"))
+
+            # Pega lista de colunas da tabela 'user' e adiciona colunas do Spotify se necessário
+            try:
+                res_u = db.session.execute(text("PRAGMA table_info(user);"))
+                user_cols = [row[1] for row in res_u.fetchall()]
+                # spotify_id
+                if 'spotify_id' not in user_cols:
+                    db.session.execute(text("ALTER TABLE user ADD COLUMN spotify_id VARCHAR;"))
+                # spotify_access_token
+                if 'spotify_access_token' not in user_cols:
+                    db.session.execute(text("ALTER TABLE user ADD COLUMN spotify_access_token VARCHAR;"))
+                # spotify_refresh_token
+                if 'spotify_refresh_token' not in user_cols:
+                    db.session.execute(text("ALTER TABLE user ADD COLUMN spotify_refresh_token VARCHAR;"))
+                # spotify_token_expires
+                if 'spotify_token_expires' not in user_cols:
+                    db.session.execute(text("ALTER TABLE user ADD COLUMN spotify_token_expires INTEGER;"))
+            except Exception as e:
+                app.logger.debug(f"Erro ao migrar tabela user: {e}")
 
             db.session.commit()
         except Exception as e:

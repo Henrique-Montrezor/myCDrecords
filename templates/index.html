@@ -11,7 +11,7 @@
         
         <div class="relative z-10 max-w-3xl mx-auto text-center">
             <h1 class="text-3xl md:text-5xl font-bold text-white mb-6 font-poppins">
-                Bem-vindo ao seu <span class="text-green-400 font-pacifico">Diário de Álbuns</span>
+                Bem-vindo ao seu <span class="text-green-400 font-grinched">Melhores CDs</span>
             </h1>
             <p class="text-gray-400 mb-8 text-lg">Registre, avalie e descubra novas músicas com sua comunidade.</p>
             
@@ -97,6 +97,7 @@
         <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
             <span class="bg-blue-500 w-2 h-8 mr-3 rounded-full"></span>
             Mais Ouvidos da Semana
+            <span class="ml-4 inline-block bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">Mais Ouvidos: {{ most_listened|length }}</span>
         </h2>
 
         <div class="relative">
@@ -104,42 +105,59 @@
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </button>
 
+            {% if most_listened_user and most_listened and most_listened|length > 0 %}
             <div id="popular-carousel" class="flex overflow-x-auto space-x-6 pb-6 scrollbar-thin scroll-smooth px-4">
-                {% if most_listened and most_listened|length > 0 %}
-                    {% for track in most_listened %}
-                    <a href="{{ url_for('album_details', album_id=track.album_id) if track.album_id else '#' }}" class="flex-shrink-0 w-40 group relative block">
-                        <div class="aspect-square rounded-lg overflow-hidden shadow-lg mb-2 relative">
-                            {% if track.image %}
-                                <img src="{{ track.image }}" class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
-                            {% else %}
-                                <img src="https://placehold.co/400x400/2D3748/9AE6B4?text=Hit" class="w-full h-full object-cover">
-                            {% endif %}
-                            <span class="absolute bottom-0 left-0 bg-gray-900/80 text-white text-xs px-2 py-1 rounded-tr font-mono">#{{ loop.index }}</span>
-                        </div>
-                        <h3 class="text-white text-sm font-medium truncate">{{ track.name }}</h3>
-                        <p class="text-gray-500 text-xs truncate">{{ track.artists }}</p>
-                        {% if track.preview_url %}
-                            <audio controls src="{{ track.preview_url }}" class="w-full mt-2"></audio>
+                {% for track in most_listened %}
+                <a href="{{ url_for('album_details', album_id=track.album_id) if track.album_id else '#' }}" class="flex-shrink-0 w-40 group relative block">
+                    <div class="aspect-square rounded-lg overflow-hidden shadow-lg mb-2 relative">
+                        {% if track.image %}
+                            <img src="{{ track.image }}" class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
+                        {% else %}
+                            <img src="https://placehold.co/400x400/2D3748/9AE6B4?text=Hit" class="w-full h-full object-cover">
                         {% endif %}
-                    </a>
-                    {% endfor %}
-                {% else %}
-                    {% for i in range(1, 8) %}
-                    <div class="flex-shrink-0 w-40 group relative">
-                        <div class="aspect-square rounded-lg overflow-hidden shadow-lg mb-2 relative">
-                            <img src="https://placehold.co/400x400/2D3748/9AE6B4?text=Hit+{{ i }}" class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
-                            <span class="absolute bottom-0 left-0 bg-gray-900/80 text-white text-xs px-2 py-1 rounded-tr font-mono">#{{ i }}</span>
-                        </div>
-                        <h3 class="text-white text-sm font-medium truncate">Popular Album {{ i }}</h3>
-                        <p class="text-gray-500 text-xs truncate">Trending Artist</p>
+                        <span class="absolute bottom-0 left-0 bg-gray-900/80 text-white text-xs px-2 py-1 rounded-tr font-mono">#{{ loop.index }}</span>
                     </div>
-                    {% endfor %}
+                    <h3 class="text-white text-sm font-medium truncate">{{ track.name }}</h3>
+                    <p class="text-gray-500 text-xs truncate">{{ track.artists }}</p>
+                    {% if track.preview_url %}
+                        <audio controls src="{{ track.preview_url }}" class="w-full mt-2"></audio>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div id="popular-carousel" class="p-6 bg-gray-800 rounded-lg border border-dashed border-gray-700 text-center">
+                {% if current_user.is_authenticated %}
+                    {% if not current_user.spotify_access_token %}
+                        <p class="text-gray-300 mb-3">Para ver recomendações personalizadas, conecte sua conta Spotify.</p>
+                        <a href="{{ url_for('spotify_connect') }}" class="inline-block bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Conectar Spotify</a>
+                    {% else %}
+                        <p class="text-gray-300">Não foi possível obter recomendações no momento. Tente reconectar sua conta Spotify.</p>
+                        <a href="{{ url_for('spotify_disconnect') }}" class="inline-block mt-3 text-sm text-gray-300 underline">Desconectar Spotify</a>
+                    {% endif %}
+                {% else %}
+                    <p class="text-gray-300 mb-3">Faça login para ver recomendações personalizadas baseadas no seu perfil Spotify.</p>
+                    <a href="{{ url_for('login') }}" class="inline-block bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Entrar</a>
                 {% endif %}
             </div>
+            {% endif %}
 
             <button id="popular-next" class="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-gray-800/80 hover:bg-gray-700 text-white p-2 rounded-md shadow-lg hidden md:inline-flex" aria-label="Próximo">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </button>
+        </div>
+        <!-- VISUAL DEBUG: mostra JSON e lista simples para checagem rápida -->
+        <div id="most-listened-debug" class="mt-4 p-3 bg-gray-900 rounded text-sm text-gray-200">
+            <strong>DEBUG: most_listened (visível)</strong>
+            <pre style="white-space:pre-wrap; max-height:240px; overflow:auto;">{{ most_listened|tojson }}</pre>
+            <div class="mt-2 text-white">
+                <strong>Lista Simples:</strong>
+                <ul>
+                {% for t in most_listened %}
+                    <li>{{ t.name }} — {{ t.artists or '—' }}</li>
+                {% endfor %}
+                </ul>
+            </div>
         </div>
     </section>
 
